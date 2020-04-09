@@ -4,18 +4,15 @@ namespace AsInvoker
 {
     static class Extensions
     {
-        // The UTF-8 Byte-Order Mark that we don't want
-        private static readonly string Utf8Bom
-            = Encoding.UTF8.GetString(Encoding.UTF8.GetPreamble());
-
         public static string ToUtf8NoBom(this byte[] data)
         {
-            var s = Encoding.UTF8.GetString(data);
-            if (s.StartsWith(Utf8Bom))
+            var bomUtf8 = Encoding.UTF8.GetString(Encoding.UTF8.GetPreamble());
+            var xml = Encoding.UTF8.GetString(data);
+            if (xml.StartsWith(bomUtf8))
             {
-                return s.Remove(0, Utf8Bom.Length);
+                return xml.Replace(bomUtf8, "");
             }
-            return s;
+            return xml;
         }
     }
 }
