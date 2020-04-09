@@ -27,6 +27,11 @@ namespace AsInvoker
 
         public delegate bool EnumResNameProc(IntPtr hModule, ResourceType lpszType, IntPtr lpszName, IntPtr lParam);
 
+        public delegate bool EnumResLangProc(IntPtr hModule, ResourceType lpszType, IntPtr lpszName, ushort wIdLanguage, IntPtr lParam);
+
+        [DllImport("kernel32.dll")]
+        public static extern bool EnumResourceLanguages(IntPtr hModule, ResourceType lpType, IntPtr lpName, EnumResLangProc lpEnumFunc, IntPtr lParam);
+
         [DllImport("kernel32.dll")]
         public static extern bool EnumResourceNames(IntPtr hModule, ResourceType dwID, EnumResNameProc lpEnumFunc, IntPtr lParam);
 

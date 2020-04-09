@@ -1,5 +1,7 @@
 ﻿using System;
 using System.IO;
+using System.Reflection;
+using System.Resources;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml;
@@ -9,14 +11,24 @@ namespace AsInvoker
 {
     class Program
     {
+        #region Fields
+        // The name of the module
         private static string _fileName;
+
+        // The name (usually an integer) of the manifest
         private static IntPtr _manifestName;
+
+        // The extracted or default application manifest
         private static XmlDocument _manifest;
+
+        private static bool _manifestFound;
+        #endregion
 
         static void Main(string[] args)
         {
             if (args.Length < 1)
             {
+                // Module not specified
                 PrintHelp();
                 return;
             }
@@ -24,12 +36,14 @@ namespace AsInvoker
             var fileName = args[0];
             if (!File.Exists(fileName))
             {
+                // Module doesn't exist
                 PrintHelp();
                 Console.WriteLine($"Error: the specified file {fileName} does not exist.");
                 return;
             }
 
-            DeEscalate(fileName);
+            _fileName = fileName;
+            DeEscalate();
         }
 
         static void PrintHelp()
@@ -38,8 +52,17 @@ namespace AsInvoker
             Console.WriteLine("Usage: AsInvoker.exe exe_to_deescalate.exe");
         }
 
+        /// <summary>
+        /// Called by <see cref="EnumResourceNames(IntPtr, ResourceType, EnumResNameProc, IntPtr)"/>.
+        /// </summary>
+        /// <param name="hModule">The handle to the module.</param>
+        /// <param name="lpszType">The type of the resource.</param>
+        /// <param name="lpszName">The name of the resource.</param>
+        /// <param name="lParam">Additional parameters (null).</param>
+        /// <returns></returns>
         static bool EnumResourceNameCallback(IntPtr hModule, ResourceType lpszType, IntPtr lpszName, IntPtr lParam)
         {
+            // Load the resource
             var hResInfo = FindResource(hModule, lpszName, lpszType);
             var cbResource = SizeofResource(hModule, hResInfo);
             var hResData = LoadResource(hModule, hResInfo);
@@ -49,24 +72,56 @@ namespace AsInvoker
             var manifest = new byte[cbResource];
             Marshal.Copy(pResource, manifest, 0, (int)cbResource);
             _manifest = new XmlDocument();
-            _manifest.LoadXml(Encoding.UTF8.GetString(manifest));
+            _manifest.LoadXml(manifest.ToUtf8NoBom());
             _manifestName = lpszName;
+
+            _manifestFound = true;
             return false;   // stop enumeration
+        }
+
+        //static bool EnumResourceLanguageCallback(IntPtr hModule, ResourceType lpszType, IntPtr lpszName, ushort wIdLanguage, IntPtr lParam)
+        //{
+        //    return true;    // keep enumerating
+        //}
+
+        static void DeEscalate()
+        {
+            // Load the module
+            var hModule = LoadLibraryEx(_fileName, IntPtr.Zero, LoadLibraryFlags.AsDatafile);
+            if (hModule == IntPtr.Zero)
+            {
+                Console.WriteLine($"Error: LoadLibraryEx error {Marshal.GetLastWin32Error()}");
+                return;
+            }
+
+            // Try to find the manifest resource
+            EnumResourceNames(hModule, ResourceType.Manifest, EnumResourceNameCallback, IntPtr.Zero);
+
+            // Release module handle and patch the manifest
+            if (!FreeLibrary(hModule))
+            {
+                Console.WriteLine($"Error: FreeLibrary error {Marshal.GetLastWin32Error()}");
+                return;
+            }
+
+            PatchManifest();
         }
 
         static void PatchManifest()
         {
-            // assembly.trustInfo.security.requestedPrivileges.requestedExecutionLevel
-            var elems = _manifest.GetElementsByTagName("requestedExecutionLevel");
-            if (elems.Count == 0)
+            if (!_manifestFound)
             {
-                Console.WriteLine("Error: the executable doesn't seem to have requested administrator privilege.");
-                return;
+                Console.WriteLine("No manifest found. Creating a default one.");
+                _manifest = new XmlDocument();
+                _manifest.LoadXml(Resources.DefaultManifest);
+                _manifestName = (IntPtr)1;
             }
 
-            // Patch each requestedExecutionLevel (should be only one)
+            // assembly.trustInfo.security.requestedPrivileges.requestedExecutionLevel
+            var elems = _manifest.GetElementsByTagName("requestedExecutionLevel");
             foreach (XmlNode elem in elems)
             {
+                // Patch each requestedExecutionLevel (should be only one)
                 foreach (XmlAttribute attr in elem.Attributes)
                 {
                     if (attr.Name == "level" && attr.Value == "requireAdministrator")
@@ -84,7 +139,11 @@ namespace AsInvoker
                 }
             }
 
-            // Update manifest resource
+            UpdateManifest();
+        }
+
+        static void UpdateManifest()
+        {
             var hUpdate = BeginUpdateResource(_fileName, false);
             var newManifest = Encoding.UTF8.GetBytes(_manifest.InnerXml);
             var newManifestHandle = GCHandle.Alloc(newManifest, GCHandleType.Pinned);
@@ -109,22 +168,6 @@ namespace AsInvoker
             }
 
             newManifestHandle.Free();
-        }
-
-        static void DeEscalate(string fileName)
-        {
-            _fileName = fileName;
-            var hLib = LoadLibraryEx(fileName, IntPtr.Zero, LoadLibraryFlags.AsDatafile);
-            EnumResourceNames(hLib, ResourceType.Manifest, EnumResourceNameCallback, IntPtr.Zero);
-            if (!FreeLibrary(hLib))
-            {
-                Console.WriteLine($"Error: FreeLibrary error {Marshal.GetLastWin32Error()}");
-            }
-
-            if (_manifest != null)
-            {
-                PatchManifest();
-            }
         }
     }
 }
