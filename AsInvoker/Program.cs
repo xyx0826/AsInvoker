@@ -1,7 +1,5 @@
 ﻿using System;
 using System.IO;
-using System.Reflection;
-using System.Resources;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml;
@@ -84,6 +82,9 @@ namespace AsInvoker
         //    return true;    // keep enumerating
         //}
 
+        /// <summary>
+        /// Load the module, find manifests, and get them patched.
+        /// </summary>
         static void DeEscalate()
         {
             // Load the module
@@ -107,6 +108,9 @@ namespace AsInvoker
             PatchManifest();
         }
 
+        /// <summary>
+        /// Modifies the retrieved (or default) manifest to remove administrator requests.
+        /// </summary>
         static void PatchManifest()
         {
             if (!_manifestFound)
@@ -142,6 +146,9 @@ namespace AsInvoker
             UpdateManifest();
         }
 
+        /// <summary>
+        /// Writes the patched manifest to the module.
+        /// </summary>
         static void UpdateManifest()
         {
             var hUpdate = BeginUpdateResource(_fileName, false);
