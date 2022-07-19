@@ -147,10 +147,40 @@ namespace AsInvoker
         }
 
         /// <summary>
+        /// Back up the module before patched.
+        /// </summary>
+        static void DoBackup()
+        {
+            var bak = _fileName + ".bak";
+            if (File.Exists(bak))
+            {
+                Console.WriteLine($"Overwrite {bak}? [Yes/No] (Y)");
+                var line = Console.ReadLine().ToUpper();
+                if (line != "Y" && line != "YES")
+                {
+                    Console.WriteLine("No backup");
+                    return;
+                }
+            }
+
+            try
+            {
+                File.Copy(_fileName, bak, true);
+                Console.WriteLine($"Backup {_fileName}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: Backup {_fileName} failed => {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Writes the patched manifest to the module.
         /// </summary>
         static void UpdateManifest()
         {
+            DoBackup();
+
             var hUpdate = BeginUpdateResource(_fileName, false);
             var newManifest = Encoding.UTF8.GetBytes(_manifest.InnerXml);
             var newManifestHandle = GCHandle.Alloc(newManifest, GCHandleType.Pinned);
